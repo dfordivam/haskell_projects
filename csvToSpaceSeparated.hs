@@ -1,6 +1,14 @@
+import System.IO
+
 --csvToSpaceSeparated :: String -> String
 
 --csvToSpaceSeparated inpStr = lines inpStr 
+
+toFile :: IO()
+toFile =  do
+            inpStr <- readFile "inp.csv"
+            writeFile "out.txt" (unlines (fun8 (lines inpStr)))
+
 
 -- parse input lines and give adjusted lines
 fun8 :: [String] -> [String]
@@ -8,13 +16,14 @@ fun8 = fun9.fun6.fun1
 
 -- combine back the columns
 fun9 :: [[String]] -> [String]
-fun9 (x:xs) = foldl1 fun10 x : fun9 xs
+fun9 (x:xs) = concat (fun10 x) : fun9 xs
 fun9 [] = []
 
 
-fun10 :: String -> String
-fun10 = concat separator
-    where separator = "\t" :: String
+fun10 :: [ String ] -> [ String ]
+fun10 (x:xs) = x : separator : fun10 xs
+    where separator = "     " :: String
+fun10 [] = []
 
 -- Parse input lines and split at commas
 fun1 :: [String]  -> [[String]]
