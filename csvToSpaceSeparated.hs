@@ -7,68 +7,68 @@ import System.IO
 toFile :: IO()
 toFile =  do
             inpStr <- readFile "inp.csv"
-            writeFile "out.txt" (unlines (fun8 (lines inpStr)))
+            writeFile "out.txt" (unlines (commaToSpaceTheLines (lines inpStr)))
 
 
 -- parse input lines and give adjusted lines
-fun8 :: [String] -> [String]
-fun8 = fun9.fun6.fun1
+commaToSpaceTheLines :: [String] -> [String]
+commaToSpaceTheLines = addSpaceAndCombine . modifyWidth . splitAtComma
 
 -- combine back the columns
-fun9 :: [[String]] -> [String]
-fun9 (x:xs) = concat (fun10 x) : fun9 xs
-fun9 [] = []
+addSpaceAndCombine :: [[String]] -> [String]
+addSpaceAndCombine (x:xs) = concat (addSpace x) : addSpaceAndCombine xs
+addSpaceAndCombine [] = []
 
 
-fun10 :: [ String ] -> [ String ]
-fun10 (x:xs) = x : separator : fun10 xs
+addSpace :: [ String ] -> [ String ]
+addSpace (x:xs) = x : separator : addSpace xs
     where separator = "     " :: String
-fun10 [] = []
+addSpace [] = []
 
 -- Parse input lines and split at commas
-fun1 :: [String]  -> [[String]]
+splitAtComma :: [String]  -> [[String]]
 
-fun1 (x:xs) = (fun2 x [] ) : fun1 xs
-fun1 [] = []
+splitAtComma (x:xs) = (splitARowAtComma x [] ) : splitAtComma xs
+splitAtComma [] = []
 
-fun2 :: String -> String -> [String]
-fun2 restLine@(x:xs) val  
-    | x == ','  = val : fun2 xs ""
-    | otherwise = fun2 xs (val ++ [x])
-fun2 [] val = [val]
+splitARowAtComma :: String -> String -> [String]
+splitARowAtComma restLine@(x:xs) val  
+    | x == ','  = val : splitARowAtComma xs ""
+    | otherwise = splitARowAtComma xs (val ++ [x])
+splitARowAtComma [] val = [val]
 
-fun4 :: [Int] -> [Int] -> [Int]
-fun4 (x:xs) (y:ys) 
-    | x < y     = y : fun4 xs ys
-    | otherwise = x : fun4 xs ys
-fun4 x [] = x
-fun4 [] y = y
+-- get Max Width Code
 
--- get Max
-fun5 :: [[String]] -> [Int] -> [Int]
-fun5 (x:xs) inMax = fun5 xs newMax
-    where   newMax = fun4 inMax xMax
+getMaxInts :: [Int] -> [Int] -> [Int]
+getMaxInts (x:xs) (y:ys) 
+    | x < y     = y : getMaxInts xs ys
+    | otherwise = x : getMaxInts xs ys
+getMaxInts x [] = x
+getMaxInts [] y = y
+
+getMaxLengthOfRow :: [[String]] -> [Int] -> [Int]
+getMaxLengthOfRow (x:xs) inMax = getMaxLengthOfRow xs newMax
+    where   newMax = getMaxInts inMax xMax
             xMax = map length x
 
-fun5 [] inMax = inMax
+getMaxLengthOfRow [] inMax = inMax
 
--- Modify width
-fun6 :: [[String]] -> [[String]]
-fun6 inpData@(x:xs) = newData
-    where   max    = fun5 inpData []
-            newData     = map (fun7 max) inpData
+-- Modify width Code
+modifyWidth :: [[String]] -> [[String]]
+modifyWidth inpData@(x:xs) = newData
+    where   max    = getMaxLengthOfRow inpData []
+            newData     = map (modifyWidthForARow max) inpData
 
-fun6 [] = []
+modifyWidth [] = []
 
--- modify width of a row
-fun7 :: [Int] -> [String] -> [String]
-fun7 (n:ns) (x:xs)
-    | (length x) < n  = modifiedStr : fun7 ns xs
-    | otherwise     = x : fun7 ns xs
+modifyWidthForARow :: [Int] -> [String] -> [String]
+modifyWidthForARow (n:ns) (x:xs)
+    | (length x) < n  = modifiedStr : modifyWidthForARow ns xs
+    | otherwise     = x : modifyWidthForARow ns xs
     where   modifiedStr = spaces ++ x
             spaces = getSpaces (n - length x)
 
-fun7 _ [] = []
+modifyWidthForARow _ [] = []
 
 getSpaces :: Int -> String
 getSpaces x 
