@@ -46,17 +46,17 @@ getMaxInts (x:xs) (y:ys)
 getMaxInts x [] = x
 getMaxInts [] y = y
 
-getMaxLengthOfRow :: [[String]] -> [Int] -> [Int]
-getMaxLengthOfRow (x:xs) inMax = getMaxLengthOfRow xs newMax
+getMaxWidthForRows :: [[String]] -> [Int] -> [Int]
+getMaxWidthForRows (x:xs) inMax = getMaxWidthForRows xs newMax
     where   newMax = getMaxInts inMax xMax
             xMax = map length x
 
-getMaxLengthOfRow [] inMax = inMax
+getMaxWidthForRows [] inMax = inMax
 
 -- Modify width Code
 modifyWidth :: [[String]] -> [[String]]
 modifyWidth inpData@(x:xs) = newData
-    where   max    = getMaxLengthOfRow inpData []
+    where   max    = getMaxWidthForRows inpData []
             newData     = map (modifyWidthForARow max) inpData
 
 modifyWidth [] = []
