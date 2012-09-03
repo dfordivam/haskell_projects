@@ -1,4 +1,5 @@
 import System.IO
+import Test.QuickCheck  
 
 --csvToSpaceSeparated :: String -> String
 
@@ -75,3 +76,8 @@ getSpaces x
     | x > 0     = " " ++ getSpaces (x-1)
     | otherwise = []
 
+
+
+-- Testing
+-- Using QuickCheck
+prop_idempotent xs = commaToSpaceTheLines (commaToSpaceTheLines xs) == commaToSpaceTheLines xs
