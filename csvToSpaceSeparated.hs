@@ -22,9 +22,11 @@ addSpaceAndCombine [] = []
 
 
 addSpace :: [ String ] -> [ String ]
-addSpace (x:xs) = x : separator : addSpace xs
-    where separator = "     " :: String
 addSpace [] = []
+addSpace (x:xs) 
+    | xs == []  = [x]
+    | otherwise            = x : separator: addSpace (xs)
+    where separator = "     " :: String
 
 -- Parse input lines and split at commas
 splitAtComma :: [String]  -> [[String]]
@@ -69,7 +71,9 @@ modifyWidthForARow (n:ns) (x:xs)
     where   modifiedStr = spaces ++ x
             spaces = getSpaces (n - length x)
 
-modifyWidthForARow _ [] = []
+modifyWidthForARow (n:ns) [] = getSpaces n : modifyWidthForARow ns []
+
+modifyWidthForARow [] _ = []
 
 getSpaces :: Int -> String
 getSpaces x 
