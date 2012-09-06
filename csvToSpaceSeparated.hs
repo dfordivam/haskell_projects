@@ -84,4 +84,5 @@ getSpaces x
 
 -- Testing
 -- Using QuickCheck
+-- quickCheck (prop_idempotent :: [String] -> Bool)
 prop_idempotent xs = commaToSpaceTheLines (commaToSpaceTheLines xs) == commaToSpaceTheLines xs
