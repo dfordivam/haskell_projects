@@ -67,7 +67,7 @@ class PrintVisitor: public Visitor{
         }
 };
 
-void execute(){
+int execute(int val){
 
     Node* list[] = {new Red, new Blue, new Red, new Red, new Blue, 0};
 
@@ -79,5 +79,7 @@ void execute(){
         (*(list+i))->accept(prntVis);
     }
     cntVis.print();
+    cout << "Inp val was " << val << endl;
+    return val;
 }
 

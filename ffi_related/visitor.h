@@ -2,7 +2,7 @@
 extern "C" {
 #endif
 
-    void execute();
+    int execute(int);
 
 #ifdef __cplusplus
 }
