@@ -1,0 +1,2 @@
+g++ -Wall -c c_main.c
+g++ visitor.cpp c_main.o
