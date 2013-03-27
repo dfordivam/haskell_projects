@@ -1,2 +1,7 @@
 g++ -Wall -c c_main.c
 g++ visitor.cpp c_main.o
+
+
+For haskell
+g++ -c visitor.cpp
+ghc --make SimpleFFI.hs -lstdc++ visitor.o
