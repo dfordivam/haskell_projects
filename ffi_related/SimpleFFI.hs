@@ -1,5 +1,8 @@
 import Foreign
 import Foreign.C.Types
+import Foreign.C.String
+import Data.ByteString
+import qualified Data.ByteString.Char8 as C
 
 foreign import ccall "math.h sin"
     c_sin :: CDouble -> CDouble
@@ -9,9 +12,10 @@ fastsin x = realToFrac( c_sin (realToFrac x))
 
 
 foreign import ccall "visitor.h"
-    execute :: CInt -> CInt
+    execute :: CInt -> CString -> IO Int
 
-executeVisitor :: Int -> Int
-executeVisitor x = fromIntegral (execute (fromIntegral x) )
+executeVisitor :: Int -> ByteString -> Int
+executeVisitor x message = unsafePerformIO ( useAsCString message (\message_1 -> execute (fromIntegral x) message_1  ))
 
-main = mapM_ (print.executeVisitor)[1, 2]
+main = (print (executeVisitor 1 myStr))
+        where myStr = C.pack "hello"
