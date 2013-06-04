@@ -7,7 +7,7 @@ import Text.Parsec.ByteString       (parseFromFile)
 
 import Language.Verilog.Parser
 import Language.Verilog.PrettyPrint (ppVerilog)
-import Language.Verilog.Syntax      (Verilog)
+import Language.Verilog.Syntax      
 
 --------------------------------------------------------------------------------
 
@@ -28,7 +28,13 @@ checkRun fp = do
             let retVal = checkModUse v
             return retVal
 
-checkModUse :: Verilog -> [String]
+checkModUse :: Verilog -> [Ident]
 
-checkModUse v = unused_mod_list
-   where unused_mod_list = ["hello"]         
+checkModUse (Verilog v) = unused_mod_list
+   where unused_mod_list = map getDescName v
+
+getDescName (ModuleDescription mod) = name
+            where name = (\(Module name _ _) -> name) mod
+getDescName (UDPDescription udp) = name
+            where name = (\(UDP name _ _ _ _ _)-> name) udp
+
