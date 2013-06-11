@@ -1,3 +1,7 @@
+-- create a path to Language folder of verilog repository
+-- Load this file in ghci 
+-- use 'test "file.v"' to check the parser on verilog file
+-- do 'checkRun "file.v"' to run the checks on verilog file
 --------------------------------------------------------------------------------
 import Prelude hiding (catch)
 
