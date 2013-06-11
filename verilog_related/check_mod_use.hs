@@ -28,17 +28,23 @@ run fp
 
 checkRun fp = do 
             v <- run fp
-            let retVal = checkModInst v
+            let retVal = getUnusedModules v
             print retVal
             return retVal
 
-checkModUse :: Verilog -> [Ident]
+-- Return list of Modules / UDPs not used in verilog
+getUnusedModules v = (getModuleList v) \\ (getInstModuleList v)
+        
+-- Return list of all Modules / UDPs in verilog
+getModuleList :: Verilog -> [Ident]
+getModuleList (Verilog v) = map getDescriptionName v
 
-checkModUse (Verilog v) = unused_mod_list
-   where unused_mod_list = map getDescName v
+getDescriptionName (ModuleDescription mod) = modName mod
+getDescriptionName (UDPDescription udp) = udpName udp
 
-getDescName (ModuleDescription mod) = modName mod
-getDescName (UDPDescription udp) = udpName udp
+-- Returns list of Modules being instantiated in Verilog v
+getInstModuleList (Verilog v) = nub (map fromJust (concat (catMaybes (map getInstModuleListForDesc v))))
+getInstModuleListForDesc ds = (getModuleFromDesc ds) >>= listInstatiatedModules
 
 listInstatiatedModules mod = return (insts)
     where body = (\(Module _ _ b) -> b) mod
@@ -47,11 +53,6 @@ listInstatiatedModules mod = return (insts)
 getInstanceItemName (InstanceItem i) = Just ((\(Instance x _ _) -> x ) i)
 getInstanceItemName _ = Nothing
 
-getModule :: Description -> Maybe Module
-getModule (ModuleDescription mod) = Just mod
-getModule (UDPDescription _) = Nothing
-
--- Returns list of Modules being instantiated in Verilog v
-checkModInst (Verilog v) = nub (map fromJust (concat (catMaybes (map checkModInstReq v))))
-checkModInstReq ds = (getModule ds) >>= listInstatiatedModules
-
+getModuleFromDesc :: Description -> Maybe Module
+getModuleFromDesc (ModuleDescription mod) = Just mod
+getModuleFromDesc (UDPDescription _) = Nothing
