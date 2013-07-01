@@ -16,7 +16,7 @@ import Language.Verilog.Syntax.AST
 import Control.Monad
 import Data.Maybe
 import Data.List
-import Data.Map
+import qualified Data.Map.Lazy as Map
 --------------------------------------------------------------------------------
 
 test :: FilePath -> IO ()
@@ -33,9 +33,10 @@ run fp
 
 checkRun fp = do 
             v <- run fp
-            let retVal = getUnusedModules v
+            let retVal = createModuleMap v
+            let loopInfo = checkRecursiveModuleInst v  
             print retVal
-            return retVal
+            return loopInfo
 
 -- Return list of Modules / UDPs not used in verilog
 getUnusedModules v = (getModuleList v) \\ (getInstModuleList v)
@@ -48,29 +49,46 @@ getDescriptionName (ModuleDescription mod) = modName mod
 getDescriptionName (UDPDescription udp) = udpName udp
 
 -- Returns list of Modules being instantiated in Verilog v
-getInstModuleList (Verilog v) = nub (map fromJust (concat (catMaybes (map getInstModuleListForDesc v))))
-getInstModuleListForDesc ds = (getModuleFromDesc ds) >>= listInstatiatedModules
+getInstModuleList :: Verilog -> [Ident]
+getInstModuleList (Verilog v) = nub (concat (catMaybes (map getInstModuleListForDesc v)))
+
+getInstModuleListForDesc :: Description -> Maybe [Ident]
+getInstModuleListForDesc ds =  (liftM listInstatiatedModules) (getModuleFromDesc ds)
 
 getModuleFromDesc :: Description -> Maybe Module
 getModuleFromDesc (ModuleDescription mod) = Just mod
 getModuleFromDesc (UDPDescription _) = Nothing
 
-listInstatiatedModules mod = return (insts)
+listInstatiatedModules :: Module -> [Ident]
+listInstatiatedModules mod = insts
     where body = (\(Module _ _ b) -> b) mod
-          insts = map getInstanceItemName body
+          insts = catMaybes (map getInstanceItemName body)
 
+getInstanceItemName :: Item -> Maybe Ident
 getInstanceItemName (InstanceItem i) = Just ((\(Instance x _ _) -> x ) i)
 getInstanceItemName _ = Nothing
 
+-- Find recursive Module Instantiation - Uses Depth First Search
+checkRecursiveModuleInst :: Verilog -> [Bool]
+checkRecursiveModuleInst ver = map (traverse_DFS modDescMap Map.empty) (map (modDescMap Map.!) unusedModList)
+    where   modDescMap  = createModuleMap ver
+            unusedModList = getUnusedModules ver
+        
 
-checkRecursiveModuleInst
+traverse_DFS :: Map.Map Ident Description -> Map.Map Ident Bool -> Description -> Bool
+traverse_DFS _ _ (UDPDescription _) = False
+traverse_DFS modDescMap modFlagMap des@(ModuleDescription mod) = if modTraversed then True else fromMaybe False retVal 
+    where retVal = (liftM (  recursive_traverse_DFS modDescMap modFlagMapNew)) (getInstModuleListForDesc des)
+          modTraversed = Map.member (getDescriptionName des) modFlagMap
+          modFlagMapNew = Map.insert (getDescriptionName des) True modFlagMap
 
-traverse_DFS :: Description -> Bool
-traverse_DFS (UDPDescription _) = true
-traverse_DFS (ModuleDescription mod) = (getInstModuleListForDesc mod) >>= liftM recursive_traverse_DFS
 
-recursive_traverse_DFS :: [Module] -> Bool
-recursive_traverse_DFS [] = true
-recursive_traverse_DFS [m:ms] = if (traverse_DFS ) then false else recursive_traverse_DFS ms
+recursive_traverse_DFS :: Map.Map Ident Description -> Map.Map Ident Bool -> [Ident] -> Bool
+recursive_traverse_DFS _ _ [] = False
+recursive_traverse_DFS modDescMap modFlagMap (m:ms) = if (traverse_DFS modDescMap modFlagMap (modDescMap Map.! m )) then True else recursive_traverse_DFS modDescMap modFlagMap ms
 
+-- Creates a map Name -> Description
+createModuleMap :: Verilog -> Map.Map Ident Description 
+createModuleMap ver@(Verilog v) = Map.fromList modDescList
+        where modDescList = zip (getModuleList ver) v
 
