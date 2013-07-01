@@ -3,7 +3,7 @@
 -- use 'test "file.v"' to check the parser on verilog file
 -- do 'checkRun "file.v"' to run the checks on verilog file
 --------------------------------------------------------------------------------
-import Prelude hiding (catch)
+import Prelude hiding (catch, lookup)
 
 import Text.PrettyPrint             (render)
 import Text.Parsec                  (parse)
@@ -16,6 +16,7 @@ import Language.Verilog.Syntax.AST
 import Control.Monad
 import Data.Maybe
 import Data.List
+import Data.Map
 --------------------------------------------------------------------------------
 
 test :: FilePath -> IO ()
@@ -50,6 +51,10 @@ getDescriptionName (UDPDescription udp) = udpName udp
 getInstModuleList (Verilog v) = nub (map fromJust (concat (catMaybes (map getInstModuleListForDesc v))))
 getInstModuleListForDesc ds = (getModuleFromDesc ds) >>= listInstatiatedModules
 
+getModuleFromDesc :: Description -> Maybe Module
+getModuleFromDesc (ModuleDescription mod) = Just mod
+getModuleFromDesc (UDPDescription _) = Nothing
+
 listInstatiatedModules mod = return (insts)
     where body = (\(Module _ _ b) -> b) mod
           insts = map getInstanceItemName body
@@ -57,6 +62,15 @@ listInstatiatedModules mod = return (insts)
 getInstanceItemName (InstanceItem i) = Just ((\(Instance x _ _) -> x ) i)
 getInstanceItemName _ = Nothing
 
-getModuleFromDesc :: Description -> Maybe Module
-getModuleFromDesc (ModuleDescription mod) = Just mod
-getModuleFromDesc (UDPDescription _) = Nothing
+
+checkRecursiveModuleInst
+
+traverse_DFS :: Description -> Bool
+traverse_DFS (UDPDescription _) = true
+traverse_DFS (ModuleDescription mod) = (getInstModuleListForDesc mod) >>= liftM recursive_traverse_DFS
+
+recursive_traverse_DFS :: [Module] -> Bool
+recursive_traverse_DFS [] = true
+recursive_traverse_DFS [m:ms] = if (traverse_DFS ) then false else recursive_traverse_DFS ms
+
+
