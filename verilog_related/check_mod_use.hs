@@ -34,8 +34,9 @@ run fp
 checkRun fp = do 
             v <- run fp
             let retVal = createModuleMap v
-            let loopInfo = checkRecursiveModuleInst v  
-            print retVal
+            --let loopInfo = checkRecursiveModuleInst v  
+            let loopInfo = checkPortDefs v  
+            --print retVal
             return loopInfo
 
 -- Return list of Modules / UDPs not used in verilog
@@ -92,3 +93,20 @@ createModuleMap :: Verilog -> Map.Map Ident Description
 createModuleMap ver@(Verilog v) = Map.fromList modDescList
         where modDescList = zip (getModuleList ver) v
 
+
+-- Check Port definitions
+-- Port names should be unique
+-- The type for ports should be defined.
+-- input cannot be reg
+--
+--checkPortDefs :: Verilog -> [Bool]
+checkPortDefs (Verilog ver) = map checkPortDefUniqueTop ver 
+
+checkPortDefUniqueTop :: Description -> Maybe Bool
+checkPortDefUniqueTop des = (liftM modPorts) (getModuleFromDesc des) >>= (\x -> return (checkPortDefUnique x))
+               
+checkPortDefUnique :: [Ident] -> Bool
+checkPortDefUnique ports = (length (nub ports)) == length(ports)
+
+--checkPortExist :: Module -> Ident -> Bool
+--checkPortExist mod port = 

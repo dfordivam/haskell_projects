@@ -5,12 +5,13 @@ middle m1(.d(c));
 
 endmodule
 
-module middle();
+module middle(a,b,c);
 leaf l1(.c(d));
 endmodule
 
 
 module leaf();
+middle m1(.c(d));
 endmodule
 
 primitive latch(q,d);
