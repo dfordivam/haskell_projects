@@ -103,10 +103,38 @@ createModuleMap ver@(Verilog v) = Map.fromList modDescList
 checkPortDefs (Verilog ver) = map checkPortDefUniqueTop ver 
 
 checkPortDefUniqueTop :: Description -> Maybe Bool
-checkPortDefUniqueTop des = (liftM modPorts) (getModuleFromDesc des) >>= (\x -> return (checkPortDefUnique x))
+checkPortDefUniqueTop des = do 
+                        ports <- (liftM modPorts) (getModuleFromDesc des) 
+                        return (checkPortDefUnique ports)
                
 checkPortDefUnique :: [Ident] -> Bool
 checkPortDefUnique ports = (length (nub ports)) == length(ports)
 
---checkPortExist :: Module -> Ident -> Bool
---checkPortExist mod port = 
+-- The port should exist in the module definition, 
+checkPort :: Description -> Ident -> Bool
+checkPort (ModuleDescription mod) port = elem port (modPorts mod)
+checkPort (UDPDescription udp) port = (port == (udpOutPort udp)) || (elem port (udpInPorts udp))
+
+
+checkInstancePortValid :: Verilog -> Module -> Bool
+checkInstancePortValid ver mod = True
+  where insts = ver
+        getInstList (InstanceItem i) = Just ((\(Instance x _ y) -> (x, y) ) i)
+        getInstList _       = Nothing
+
+-- Check if the port list is valid for the given instance
+-- This assumes the instName is valid
+checkPortExist :: Verilog -> Ident -> [Ident] -> Bool
+checkPortExist _ _ [] = True
+checkPortExist ver modName (port:portList) = 
+                                    if (checkPort des port) 
+                                    then checkPortExist ver modName portList
+                                    else False
+  where des             = modDescMap Map.! modName
+        modDescMap      = createModuleMap ver
+
+
+
+
+
+--listInstatiatedModules
