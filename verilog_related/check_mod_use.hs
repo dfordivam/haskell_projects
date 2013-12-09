@@ -3,6 +3,8 @@
 -- use 'test "file.v"' to check the parser on verilog file
 -- do 'checkRun "file.v"' to run the checks on verilog file
 --------------------------------------------------------------------------------
+{-# LANGUAGE FlexibleContexts, MultiParamTypeClasses #-}
+--------------------------------------------------------------------------------
 import Prelude hiding (catch, lookup)
 
 import Text.PrettyPrint             (render)
@@ -14,10 +16,14 @@ import Language.Verilog.PrettyPrint
 import Language.Verilog.Syntax      
 import Language.Verilog.Syntax.AST      
 import Control.Monad
+import Control.Monad.Error
 import Data.Maybe
 import Data.List
+import Data.Traversable
 import qualified Data.Map.Lazy as Map
 --------------------------------------------------------------------------------
+
+main = checkRun "test.v"
 
 test :: FilePath -> IO ()
 test fp
@@ -33,12 +39,34 @@ run fp
 
 checkRun fp = do 
             v <- run fp
-            let retVal = createModuleMap v
+            --let retVal = createModuleMap v
             --let loopInfo = checkRecursiveModuleInst v  
-            let loopInfo = checkPortDefs v  
-            --print retVal
-            return loopInfo
+            --let retVal = map (flip (catchError lintErrorHandler) ) (checkPortDefs v  )
+            let retVal = (checkPortDefs v  )
+            print retVal
+            let r = map (flip catchError lintErrorHandler) retVal
+            traverse printLintError r
+            return (r)
 
+--------------------------------------------------------------------------------
+data LintError = 
+        NonUniquePort Ident [Ident]
+     |  OtherError String
+     deriving Show
+
+instance Error LintError where
+  strMsg = OtherError
+--  throwError = Left
+--  catchError (Right val) _ = Right val
+--  catchError (Left err)  h = h err
+
+lintErrorHandler :: LintError -> Either LintError Bool
+lintErrorHandler (NonUniquePort name ports) = Left (NonUniquePort name ports)
+
+printLintError :: Either LintError Bool -> IO ()
+printLintError (Right _) = print ""
+printLintError (Left le) = print le
+--------------------------------------------------------------------------------
 -- Return list of Modules / UDPs not used in verilog
 getUnusedModules v = (getModuleList v) \\ (getInstModuleList v)
         
@@ -102,10 +130,15 @@ createModuleMap ver@(Verilog v) = Map.fromList modDescList
 --checkPortDefs :: Verilog -> [Bool]
 checkPortDefs (Verilog ver) = map checkPortDefUniqueTop ver 
 
-checkPortDefUniqueTop :: Description -> Maybe Bool
-checkPortDefUniqueTop des = do 
-                        ports <- (liftM modPorts) (getModuleFromDesc des) 
-                        return (checkPortDefUnique ports)
+checkPortDefUniqueTop :: Description -> Either LintError Bool
+checkPortDefUniqueTop des = if  (length (nub ports)) == length(ports)
+                            then Right True
+                            else throwError (NonUniquePort desName dupPorts) 
+                    where ports = getPorts des
+                          getPorts (ModuleDescription des) = modPorts des
+                          getPorts (UDPDescription des) = (udpOutPort des) : (udpInPorts des)
+                          dupPorts = nub (ports \\ (nub ports))
+                          desName = getDescriptionName des
                
 checkPortDefUnique :: [Ident] -> Bool
 checkPortDefUnique ports = (length (nub ports)) == length(ports)
