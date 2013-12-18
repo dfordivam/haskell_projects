@@ -41,11 +41,9 @@ checkRun fp = do
             v <- run fp
             --let retVal = createModuleMap v
             --let loopInfo = checkRecursiveModuleInst v  
-            --let retVal = map (flip (catchError lintErrorHandler) ) (checkPortDefs v  )
-            --let retVal = (checkPortDefs v  )
             --print retVal
             --let r = map (flip catchError lintErrorHandler) retVal
-            let r = checkPortDescription v
+            let r = runChecks v
             --printLintError r
             return (r)
 
@@ -65,26 +63,50 @@ instance Error LintError where
 
 --lintErrorHandler :: LintError -> Either LintError Bool
 lintErrorHandler (NonUniquePort name ports) = Left (NonUniquePort name ports)
+lintErrorHandler (InvalidInstPortList name ports) = Left (InvalidInstPortList name ports)
 
-printLintError :: Either LintError a -> IO ()
+--printLintError :: Either LintError a -> IO ()
 printLintError (Right _) = print ""
 printLintError (Left le) = print le
 --------------------------------------------------------------------------------
 --runChecks :: Verilog -> Either LintError a
 runChecks v = do 
-            checkPortDefs v
-            --checkPortDescription v
+            checkPortDefUnique v
+            checkPortDescription v
             `catchError` lintErrorHandler
 
+--------------------------------------------------------------------------------
+    -- Some Utility Functions
+    --
+-- Get List of ports of a Module / UDP
+getPorts :: Description -> [Ident]
+getPorts (ModuleDescription des) = modPorts des
+getPorts (UDPDescription des) = (udpOutPort des) : (udpInPorts des)
+
+getDescriptionName (ModuleDescription mod) = modName mod
+getDescriptionName (UDPDescription udp) = udpName udp
+
+-- Get Instatiated Modules
+getInstanceDeclarations :: Description -> [Instance]
+getInstanceDeclarations (UDPDescription _ ) = []
+getInstanceDeclarations (ModuleDescription mod) = catMaybes (map getInstanceItem body)  
+  where body = (\(Module _ _ b) -> b) mod
+
+
+-- Creates a map Name -> Description
+createModuleMap :: Verilog -> Map.Map Ident Description 
+createModuleMap ver@(Verilog v) = Map.fromList modDescList
+        where modDescList = zip (getModuleList ver) v
+
+
+
+--
 -- Return list of Modules / UDPs not used in verilog
 getUnusedModules v = (getModuleList v) \\ (getInstModuleList v)
         
 -- Return list of all Modules / UDPs in verilog
 getModuleList :: Verilog -> [Ident]
 getModuleList (Verilog v) = map getDescriptionName v
-
-getDescriptionName (ModuleDescription mod) = modName mod
-getDescriptionName (UDPDescription udp) = udpName udp
 
 -- Returns list of Modules being instantiated in Verilog v
 getInstModuleList :: Verilog -> [Ident]
@@ -131,79 +153,52 @@ recursive_traverse_DFS modDescMap modFlagMap (m:ms) =   if (traverse_DFS modDesc
                                                         else recursive_traverse_DFS modDescMap modFlagMap ms
 
 
--- Creates a map Name -> Description
-createModuleMap :: Verilog -> Map.Map Ident Description 
-createModuleMap ver@(Verilog v) = Map.fromList modDescList
-        where modDescList = zip (getModuleList ver) v
-
-
 
 
 -- Check Port definitions
--- Port names should be unique
+-- Port names should be unique (
 -- The type for ports should be defined.
 -- input cannot be reg
 --
---checkPortDefs :: Verilog -> [Bool]
-checkPortDefs (Verilog ver) = Data.Traversable.mapM checkPortDefUniqueTop ver 
+checkPortDefUnique (Verilog ver) = Data.Traversable.mapM loop1 ver 
+  where loop1 des = if  (length (nub ports)) == length(ports)
+                    then Right True
+                    else throwError (NonUniquePort desName dupPorts) 
 
-checkPortDefUniqueTop :: Description -> Either LintError Bool
-checkPortDefUniqueTop des = if  (length (nub ports)) == length(ports)
-                            then Right True
-                            else throwError (NonUniquePort desName dupPorts) 
-                    where ports = getPorts des
-                          getPorts (ModuleDescription des) = modPorts des
-                          getPorts (UDPDescription des) = (udpOutPort des) : (udpInPorts des)
-                          dupPorts = nub (ports \\ (nub ports))
-                          desName = getDescriptionName des
+            where   ports = getPorts des
+                    dupPorts = nub (ports \\ (nub ports))
+                    desName = getDescriptionName des
                
-checkPortDefUnique :: [Ident] -> Bool
-checkPortDefUnique ports = (length (nub ports)) == length(ports)
-
--- The port should exist in the module definition, 
-checkPort :: Description -> NamedConnection -> Bool
-checkPort (ModuleDescription mod) (NamedConnection port _) = elem port (modPorts mod)
-checkPort (UDPDescription udp) (NamedConnection port _) = (port == (udpOutPort udp)) || (elem port (udpInPorts udp))
 
 
-checkInstancePortValid :: Verilog -> Module -> Bool
-checkInstancePortValid ver mod = True
-  where insts = ver
-        getInstList (InstanceItem i) = Just ((\(Instance x _ y) -> (x, y) ) i)
-        getInstList _       = Nothing
+-- Checks port list of instantiated modules for invalid port name 
+-- TODO:
+checkPortDescription v@(Verilog des) = (Data.Traversable.sequence (map (loop1) allInsts))
+  where allInsts = concat (map getInstanceDeclarations des)
+
+        loop1 inst = Data.Traversable.sequence ((loop2) (fetchInstData inst))
+            where   fetchInstData i = map (\(Inst x _ y) -> (x, y)) ((\(Instance _ _ x) -> x) i )
+
+                    loop2 [] = []
+                    loop2 (c:cs) = (loop2_2 (fst c) (snd c) ): (loop2 cs)
+                    
+                    modName = (\(Instance x _ _) -> x) inst
+                    loop2_2 i (NamedConnections d) = checkPortExist v modName i d
+                    loop2_2 _ (Connections _) = Right True -- This case can throw warnings if ports are unconnected
 
 -- Check if the port list is valid for the given instance
 -- This assumes the instName is valid
 checkPortExist :: Verilog -> Ident -> Ident -> [NamedConnection] -> Either LintError Bool
 checkPortExist _ _ _ [] = Right True
 checkPortExist ver modName instName (port:portList) = 
-                                    if (checkPort des port) 
+                                    if (checkPort des portName) 
                                     then checkPortExist ver instName modName portList
                                     else throwError (InvalidInstPortList instName portName)
   where des             = modDescMap Map.! modName
         modDescMap      = createModuleMap ver
         portName        = (\(NamedConnection x _) -> x) port
+        
+        -- The port should exist in the module definition, 
+        checkPort (ModuleDescription mod) p = elem p (modPorts mod)
+        checkPort (UDPDescription udp) p = (p == (udpOutPort udp)) || (elem p (udpInPorts udp))
 
-
---checkPortDescription :: Verilog ->c
-checkPortDescription v@(Verilog des) = concat (map (getImpData3 v) allInsts)
-  where allInsts = concat (map getInstanceDeclarations des)
-
-getInstNameAndPortConn =  (\(Inst x _ y) -> (x,y))
---                        
---getImpData:: Instance -> [(Ident, NamedConnection)]
-getImpData (Instance _ _ instList) = map getInstNameAndPortConn instList
---getImpData3 :: Verilog -> Instance -> []
-getImpData3 v inst@(Instance modName _ _) =  (getImpData5 v modName) moduleInstancesList
-  where moduleInstancesList = getImpData inst
-
-getImpData5 _ _ [] = []
-getImpData5 v m (c:cs) = (getImpData4 v m (fst c) (snd c) ): (getImpData5 v m cs)
-getImpData4 v m i (NamedConnections d) = checkPortExist v m i d
-getImpData4 v m i (Connections d) = Right True
-
-getInstanceDeclarations (UDPDescription _ ) = []
-getInstanceDeclarations (ModuleDescription mod) = catMaybes (map getInstanceItem body)  
-  where body = (\(Module _ _ b) -> b) mod
-
---listInstatiatedModules
