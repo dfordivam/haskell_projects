@@ -64,6 +64,7 @@ instance Error LintError where
 --lintErrorHandler :: LintError -> Either LintError Bool
 lintErrorHandler (NonUniquePort name ports) = Left (NonUniquePort name ports)
 lintErrorHandler (InvalidInstPortList name ports) = Left (InvalidInstPortList name ports)
+lintErrorHandler (RecursiveModInst name ) = Left (RecursiveModInst name )
 
 --printLintError :: Either LintError a -> IO ()
 printLintError (Right _) = print ""
@@ -71,6 +72,7 @@ printLintError (Left le) = print le
 --------------------------------------------------------------------------------
 --runChecks :: Verilog -> Either LintError a
 runChecks v = do 
+            checkRecursiveModuleInst v
             checkPortDefUnique v
             checkPortDescription v
             `catchError` lintErrorHandler
@@ -86,6 +88,11 @@ getPorts (UDPDescription des) = (udpOutPort des) : (udpInPorts des)
 getDescriptionName (ModuleDescription mod) = modName mod
 getDescriptionName (UDPDescription udp) = udpName udp
 
+
+getInstanceItem :: Item -> Maybe Instance
+getInstanceItem (InstanceItem i) = Just i
+getInstanceItem _ = Nothing
+
 -- Get Instatiated Modules
 getInstanceDeclarations :: Description -> [Instance]
 getInstanceDeclarations (UDPDescription _ ) = []
@@ -95,62 +102,51 @@ getInstanceDeclarations (ModuleDescription mod) = catMaybes (map getInstanceItem
 
 -- Creates a map Name -> Description
 createModuleMap :: Verilog -> Map.Map Ident Description 
-createModuleMap ver@(Verilog v) = Map.fromList modDescList
-        where modDescList = zip (getModuleList ver) v
+createModuleMap (Verilog des) = Map.fromList modDescList
+        where modDescList = zip moduleList des
+              moduleList = map getDescriptionName des
 
-
-
---
--- Return list of Modules / UDPs not used in verilog
-getUnusedModules v = (getModuleList v) \\ (getInstModuleList v)
-        
--- Return list of all Modules / UDPs in verilog
-getModuleList :: Verilog -> [Ident]
-getModuleList (Verilog v) = map getDescriptionName v
-
--- Returns list of Modules being instantiated in Verilog v
-getInstModuleList :: Verilog -> [Ident]
-getInstModuleList (Verilog v) = nub (concat (catMaybes (map getInstModuleListForDesc v)))
 
 getInstModuleListForDesc :: Description -> Maybe [Ident]
 getInstModuleListForDesc ds =  (liftM listInstatiatedModules) (getModuleFromDesc ds)
+  where getModuleFromDesc (ModuleDescription mod) = Just mod
+        getModuleFromDesc (UDPDescription _) = Nothing
 
-getModuleFromDesc :: Description -> Maybe Module
-getModuleFromDesc (ModuleDescription mod) = Just mod
-getModuleFromDesc (UDPDescription _) = Nothing
+        listInstatiatedModules mod = instNames
+         where  body = (\(Module _ _ b) -> b) mod
+                insts = catMaybes (map getInstanceItem body)
+                instNames = map (\(Instance x _ _) -> x) insts
+--------------------------------------------------------------------------------
 
-listInstatiatedModules :: Module -> [Ident]
-listInstatiatedModules mod = instNames
-    where body = (\(Module _ _ b) -> b) mod
-          insts = catMaybes (map getInstanceItem body)
-          instNames = map (\(Instance x _ _) -> x) insts 
+--
+-- Return list of Modules / UDPs not used in verilog
+getUnusedModules (Verilog des) = moduleList \\ modulesInstantiated
+  where moduleList = map getDescriptionName des
+        modulesInstantiated = nub (concat (catMaybes (map getInstModuleListForDesc des)))
 
-getInstanceItem :: Item -> Maybe Instance
-getInstanceItem (InstanceItem i) = Just i
-getInstanceItem _ = Nothing
+ 
 
 -- Find recursive Module Instantiation - Uses Depth First Search
-checkRecursiveModuleInst :: Verilog -> [Bool]
-checkRecursiveModuleInst ver = map (traverse_DFS modDescMap Map.empty) (map (modDescMap Map.!) unusedModList)
-    where   modDescMap  = createModuleMap ver
-            unusedModList = getUnusedModules ver
-        
+--checkRecursiveModuleInst :: Verilog -> Either[Bool]
+checkRecursiveModuleInst ver = Data.Traversable.mapM (dfs_depth Map.empty) (map getMod unusedModList)
+  where modDescMap  = createModuleMap ver
+        getMod m = (modDescMap Map.! m)
+        unusedModList = getUnusedModules ver
 
-traverse_DFS :: Map.Map Ident Description -> Map.Map Ident Bool -> Description -> Bool
-traverse_DFS _ _ (UDPDescription _) = False
-traverse_DFS modDescMap modFlagMap des@(ModuleDescription mod) =    if modTraversed 
-                                                                    then True 
-                                                                    else fromMaybe False retVal 
-    where retVal = (liftM (  recursive_traverse_DFS modDescMap modFlagMapNew)) (getInstModuleListForDesc des)
-          modTraversed = Map.member (getDescriptionName des) modFlagMap
-          modFlagMapNew = Map.insert (getDescriptionName des) True modFlagMap
+        dfs_depth _ (UDPDescription _) = Right True
+        dfs_depth modFlagMap des =   if modTraversed 
+                                        then throwError (RecursiveModInst (getDescriptionName des))
+                                        else fromMaybe (Right True) retVal 
+            where retVal = (liftM ( dfs_width modFlagMapNew)) (getInstModuleListForDesc des)
+                  modTraversed = Map.member (getDescriptionName des) modFlagMap
+                  modFlagMapNew = Map.insert (getDescriptionName des) True modFlagMap
+                  
 
-
-recursive_traverse_DFS :: Map.Map Ident Description -> Map.Map Ident Bool -> [Ident] -> Bool
-recursive_traverse_DFS _ _ [] = False
-recursive_traverse_DFS modDescMap modFlagMap (m:ms) =   if (traverse_DFS modDescMap modFlagMap (modDescMap Map.! m )) 
-                                                        then True 
-                                                        else recursive_traverse_DFS modDescMap modFlagMap ms
+        dfs_width _ [] = Right True
+        dfs_width modFlagMap (m:ms) = r evaluateDepth
+            where evaluateDepth = dfs_depth modFlagMap (getMod m)
+                  r (Right _) = dfs_width modFlagMap ms
+                  r (Left le) = throwError le
 
 
 
