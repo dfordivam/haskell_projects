@@ -52,6 +52,7 @@ data LintError =
         NonUniquePort Ident [Ident]
      |  RecursiveModInst Ident
      |  InvalidInstPortList Ident Ident
+     |  NonUniqueItemDecl Ident [Ident]
      |  OtherError String
      deriving Show
 
@@ -88,6 +89,11 @@ getPorts (UDPDescription des) = (udpOutPort des) : (udpInPorts des)
 getDescriptionName (ModuleDescription mod) = modName mod
 getDescriptionName (UDPDescription udp) = udpName udp
 
+--getPortList (InputDecl _ l) = l
+--getPortList (OutputDecl _ l) = l
+--getPortList (InOutDecl _ l) = l
+--getPortList (ParamDecl _) = []
+--getPortList (RegDecl _ _ _) = []
 
 getInstanceItem :: Item -> Maybe Instance
 getInstanceItem (InstanceItem i) = Just i
@@ -124,7 +130,10 @@ getUnusedModules (Verilog des) = moduleList \\ modulesInstantiated
   where moduleList = map getDescriptionName des
         modulesInstantiated = nub (concat (catMaybes (map getInstModuleListForDesc des)))
 
- 
+checkInvalidInstance ver@(Verilog des) = and (map isValid allInsts)
+  where modDescMap  = createModuleMap ver
+        allInsts = concat (map getInstanceDeclarations des)
+        isValid (Instance modName _ _) = Map.member modName modDescMap
 
 -- Find recursive Module Instantiation - Uses Depth First Search
 --checkRecursiveModuleInst :: Verilog -> Either[Bool]
@@ -197,4 +206,55 @@ checkPortExist ver modName instName (port:portList) =
         -- The port should exist in the module definition, 
         checkPort (ModuleDescription mod) p = elem p (modPorts mod)
         checkPort (UDPDescription udp) p = (p == (udpOutPort udp)) || (elem p (udpInPorts udp))
+
+
+--------------------------------------------------------------------------------
+--checkUdpInner
+
+-- Checks inside Module
+-- Check For unique names
+-- Ports Declarations should be present in the port list
+-- Assign statements should only have wire / output / inout in the LHS
+-- Instances should have valid Module / UDP Names
+--      Named port connections should be valid
+-- Procedural blocks statements
+--      Should have valid LHS and RHS (XMR will be checked later)
+--      LHS cannot be a wire
+--      Sensitivity should be correct
+-- Statements RHS can be wire, reg, int, function
+-- Statement with a func / task call should have valid parameters
+--checkModuleInner 
+
+checkModulePortDeclaration des@(ModuleDescription mod) =
+                                        if (length (nub portDecls)) == length (portDecls)
+                                        then    if (and (map (flip elem allPorts) portDecls))
+                                                then Right True
+                                                else throwError (NonUniqueItemDecl desName invalidDecl)
+                                        else throwError (NonUniqueItemDecl desName dupPorts)
+  where allPorts = getPorts des
+        portDecls = concat (map fetchPort (modBody mod))
+        fetchPort (InputDeclItem p) = (\(InputDecl _ x) -> x)p 
+        fetchPort (OutputDeclItem p) = (\(OutputDecl _ x) -> x)p 
+        fetchPort (InOutDeclItem p) = (\(InOutDecl _ x) -> x)p 
+        fetchPort _ = []
+
+        invalidDecl = filter (flip notElem allPorts) portDecls
+        dupPorts = nub (portDecls \\ (nub portDecls))
+        desName = getDescriptionName des
+
+checkModulePortDeclaration des@(UDPDescription udp) = 
+                                        if (length (nub portDecls)) == length (portDecls)
+                                        then    if (and (map (flip elem allPorts) portDecls))
+                                                then Right True
+                                                else throwError (NonUniqueItemDecl desName invalidDecl)
+                                        else throwError (NonUniqueItemDecl desName dupPorts)
+  where allPorts = getPorts des
+        portDecls = concat (map fetchPort (udpDecls udp))
+        fetchPort (UDPOutputDecl p) = (\(OutputDecl _ x) -> x) p
+        fetchPort (UDPInputDecl p) = (\(InputDecl _ x) -> x) p
+        fetchPort _ = []
+
+        invalidDecl = filter (flip notElem allPorts) portDecls
+        dupPorts = nub (portDecls \\ (nub portDecls))
+        desName = getDescriptionName des
 
